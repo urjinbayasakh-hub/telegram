@@ -2,6 +2,9 @@ import os
 import openai
 import telebot
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
+import threading
+import time
 
 # -------------------------
 # ТОХИРГОО
@@ -15,10 +18,11 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 openai.api_key = OPENAI_API_KEY
 
 # -------------------------
-# CONTEXT / STATE ХАДГАЛАХ MAP
+# CONTEXT, STATE
 # -------------------------
 user_context = {}  # хэрэглэгчийн чат түүх
-user_stage = {}    # хэрэглэгчийн одоогийн шат (e.g. placement test)
+user_stage = {}    # хэрэглэгчийн шат
+subscribed_users = set()  # өдөр бүрийн хичээл авах хэрэглэгчид
 
 # -------------------------
 # INTENT DETECTION
@@ -28,41 +32,71 @@ def detect_intent(txt):
 
     if any(x in t for x in ["сайн уу", "sain uu", "hi", "hello"]):
         return "greeting"
-
-    if any(x in t for x in ["3", "түвшин", "test", "exam", "placement"]):
+    if any(x in t for x in ["3", "түвшин", "placement", "exam", "test"]):
         return "placement_test"
-
-    if "англи" in t or "english" in t:
-        return "learn_english"
-
+    if "translate" in t or "орчуул" in t:
+        return "translate"
+    if "жишээ" in t or "example" in t:
+        return "example_request"
+    if any(x in t for x in ["алдаа", "зас", "grammar", "correct", "fix"]):
+        return "correction"
+    if any(x in t for x in ["тест", "шалгалт", "quiz"]):
+        return "quiz"
+    if any(x in t for x in ["subscribe", "өдөр бүр", "day lesson"]):
+        return "subscribe"
+    if "unsubscribe" in t:
+        return "unsubscribe"
     if any(x in t for x in ["speaking", "ярих", "ярьж", "говорить"]):
         return "speaking"
-
-    if any(x in t for x in ["үг", "vocab", "vocabulary", "үг цээж", "word"]):
+    if any(x in t for x in ["үг", "vocab", "vocabulary", "үг цээж"]):
         return "vocab"
-
     return "fallback"
 
 # -------------------------
-# READY-MADE RESPONSES
+# READY TEXTS
 # -------------------------
 RESPONSE_GREETING = (
-    "Сайн байна уу! 👋\n"
-    "Би англи хэл сурахад чинь туслах AI багш байна.\n\n"
-    "Та яг одоо юу хүсэж байна вэ? 😊\n"
+    "Сайн уу! 👋 Би AI англи хэлний багш байна.\n\n"
+    "Юу хийх вэ? 👇\n"
     "1️⃣ Үг цээжлэх\n"
     "2️⃣ Ярианы дадлага\n"
-    "3️⃣ Түвшин тогтоох шалгалт\n\n"
-    "Тохирох дугаарыг бичээд явуулаарай (жишээ: 3)"
+    "3️⃣ Түвшин тогтоох шалгалт\n"
+    "4️⃣ Монгол ↔ Англи орчуулга\n"
+    "5️⃣ Өдөр бүрийн AI хичээл (subscribe)\n"
+    "Сонголтоо бичээрэй (жишээ: 3)"
 )
 
 RESPONSE_FALLBACK = (
     "Би туслахад бэлэн байна 😊\n"
-    "Та яг юу хийхийг хүсэж байна вэ?\n"
+    "Та юу хийхийг хүсэж байна вэ?\n"
     "1️⃣ Үг цээжлэх\n"
     "2️⃣ Ярианы дадлага\n"
-    "3️⃣ Түвшин тогтоох шалгалт"
+    "3️⃣ Түвшин тогтоох шалгалт\n"
+    "4️⃣ Монгол ↔ Англи орчуулга"
 )
+
+# -------------------------
+# DAILY LESSON THREAD
+# -------------------------
+def send_daily_lessons():
+    while True:
+        now = datetime.now()
+        if now.hour == 8 and now.minute == 0:  # өглөө 08:00 бүрт илгээнэ
+            for chat_id in subscribed_users:
+                try:
+                    prompt = "Create a short English lesson (vocabulary + sentence + exercise) for a Mongolian learner."
+                    completion = openai.ChatCompletion.create(
+                        model="gpt-4-turbo",
+                        messages=[{"role": "system", "content": prompt}],
+                        temperature=0.8
+                    )
+                    lesson = completion.choices[0].message["content"]
+                    bot.send_message(chat_id, "🌅 Өглөөний AI хичээл:\n\n" + lesson)
+                except Exception:
+                    pass
+        time.sleep(60)
+
+threading.Thread(target=send_daily_lessons, daemon=True).start()
 
 # -------------------------
 # LEVEL TEST QUESTIONS
@@ -82,7 +116,6 @@ LEVEL_QUESTIONS = [
 def handle_message(message):
     if message.from_user.is_bot:
         return
-
     chat_id = message.chat.id
     user_input = message.text.strip()
     intent = detect_intent(user_input)
@@ -91,87 +124,109 @@ def handle_message(message):
     if chat_id not in user_context:
         user_context[chat_id] = [
             {"role": "system", "content": (
-                "Та англи хэл сурагчид тусалдаг AI багш. "
+                "Та англи хэл сурагчдад тусалдаг AI багш. "
                 "Хариулт чинь ойлгомжтой, найрсаг, товч, зааварлаг байх ёстой. "
-                "Монгол хэлээр тайлбар хийж, англи хэлний жишээг оруул. "
-                "Хэрвээ сурагч түвшин тогтоох шалгалт хийсэн бол, "
-                "түүний түвшинг тодорхойлж, түүнд тохирсон дараагийн шатны сургалтын төлөвлөгөө гарга."
+                "Монгол хэлээр тайлбар хийж, англи жишээ өгүүлбэр оруул."
             )}
         ]
 
-    # -------------------------
-    # 🎯 ТҮВШИН ШАЛГАЛТЫН ГОРИМ
-    # -------------------------
+    # -------- 1. DAILY LESSON SUBSCRIPTION --------
+    if intent == "subscribe":
+        subscribed_users.add(chat_id)
+        bot.send_message(chat_id, "🎯 Та өдөр бүрийн AI хичээл хүлээн авахад бүртгэгдлээ!")
+        return
+    if intent == "unsubscribe":
+        subscribed_users.discard(chat_id)
+        bot.send_message(chat_id, "❌ Та өдөр бүрийн хичээлээс хасагдлаа.")
+        return
+
+    # -------- 2. TRANSLATION --------
+    if intent == "translate":
+        try:
+            direction = "Mongolian to English" if any(" " in user_input and all('\u0400' <= c <= '\u04FF' or c == ' ' for c in user_input)) else "English to Mongolian"
+            completion = openai.ChatCompletion.create(
+                model="gpt-4-turbo",
+                messages=[
+                    {"role": "system", "content": f"Translate between {direction}. Keep meaning accurate and natural."},
+                    {"role": "user", "content": user_input}
+                ]
+            )
+            reply = completion.choices[0].message["content"]
+        except Exception:
+            reply = "⚠️ Орчуулга хийхэд алдаа гарлаа."
+        bot.send_message(chat_id, reply)
+        return
+
+    # -------- 3. PLACEMENT TEST --------
     if intent == "placement_test":
         user_stage[chat_id] = {"mode": "placement", "q_index": 0, "answers": []}
-        bot.send_message(chat_id, "🎯 Гайхалтай! Түвшинг чинь шалгацгаая.\n5 асуулт асууна. Хариултаа англиар бичээрэй.\n")
+        bot.send_message(chat_id, "🎯 Түвшинг чинь шалгая.\n5 асуултад англиар хариулаарай!\n")
         bot.send_message(chat_id, LEVEL_QUESTIONS[0])
         return
 
-    # -------------------------
-    # 🧩 Хэрвээ хэрэглэгч түвшин шалгалтандаа хариулж байгаа бол
-    # -------------------------
+    # -------- 4. PLACEMENT TEST ANSWERS --------
     if chat_id in user_stage and user_stage[chat_id].get("mode") == "placement":
         stage = user_stage[chat_id]
         stage["answers"].append(user_input)
         stage["q_index"] += 1
 
         if stage["q_index"] < len(LEVEL_QUESTIONS):
-            next_q = LEVEL_QUESTIONS[stage["q_index"]]
-            bot.send_message(chat_id, next_q)
+            bot.send_message(chat_id, LEVEL_QUESTIONS[stage["q_index"]])
         else:
-            # ✅ 5 асуултын дараа түвшин дүгнэх
             try:
                 summary_prompt = (
-                    "Сурагчийн түвшин шалгалтын хариултуудыг дүгнэ. "
-                    "Доорх хариултуудыг үндэслээд A1–C1 түвшинг тогтоон тайлбар өг. "
-                    "Түвшин тогтоосны дараа дараагийн шатны сургалтын төлөвлөгөөг гарга: "
-                    "өөрөөр хэлбэл, түвшинд нь тохирсон үгс, ярианы дасгал, богино зорилго санал болго. "
-                    f"Хариултууд: {stage['answers']}"
+                    "Analyze student's English level (A1–C1) and create a custom 7-day learning plan "
+                    "with vocabulary, grammar focus, and practice ideas. "
+                    f"Answers: {stage['answers']}"
                 )
-
-                user_context[chat_id].append({"role": "user", "content": summary_prompt})
                 completion = openai.ChatCompletion.create(
-                    model="gpt-4-turbo",  # GPT-4 илүү нарийвчлалтай
-                    messages=user_context[chat_id],
+                    model="gpt-4-turbo",
+                    messages=[{"role": "system", "content": summary_prompt}],
                     temperature=0.7
                 )
                 result = completion.choices[0].message["content"]
-
-                bot.send_message(chat_id, "✅ Шалгалт дууслаа!\n\n🎓 Түвшин ба төлөвлөгөө:\n\n" + result)
-
+                bot.send_message(chat_id, "✅ Шалгалт дууслаа!\n\n" + result)
             except Exception:
-                bot.send_message(chat_id, "⚠️ AI сервертэй холбогдоход алдаа гарлаа. Түр хүлээгээд дахин оролдоорой.")
-
-            # state reset
+                bot.send_message(chat_id, "⚠️ AI дүгнэлт хийхэд алдаа гарлаа.")
             user_stage.pop(chat_id)
         return
 
-    # -------------------------
-    # 💬 AI БАГШИЙН ХАРИУЛТ (Speaking / Vocab / Learning)
-    # -------------------------
-    if intent in ["speaking", "learn_english", "vocab"]:
+    # -------- 5. EXAMPLE REQUEST / GRAMMAR CORRECTION / QUIZ --------
+    if intent in ["example_request", "correction", "quiz", "speaking", "vocab", "learn_english"]:
         try:
-            user_context[chat_id].append({"role": "user", "content": user_input})
+            context_prompt = {
+                "example_request": "Generate clear example sentences on this topic with Mongolian translations.",
+                "correction": "Correct grammar errors and explain in Mongolian.",
+                "quiz": "Create a short 3-question quiz from the latest vocabulary or grammar concept. Provide correct answers with explanations.",
+                "speaking": "Give a speaking exercise and follow-up question for practice.",
+                "vocab": "Teach 5 useful words with meaning, part of speech, and example sentences.",
+                "learn_english": "Give short lesson with vocabulary, grammar point, and practice question."
+            }
+            prompt = context_prompt[intent]
             completion = openai.ChatCompletion.create(
                 model="gpt-4-turbo",
-                messages=user_context[chat_id],
+                messages=[
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": user_input}
+                ],
                 temperature=0.8
             )
             reply = completion.choices[0].message["content"]
-            user_context[chat_id].append({"role": "assistant", "content": reply})
         except Exception:
-            reply = "⚠️ AI сервертэй холбогдоход алдаа гарлаа."
-    elif intent == "greeting":
+            reply = "⚠️ AI боловсруулалт амжилтгүй боллоо."
+        bot.send_message(chat_id, reply)
+        return
+
+    # -------- 6. DEFAULT / GREETING --------
+    if intent == "greeting":
         reply = RESPONSE_GREETING
     else:
         reply = RESPONSE_FALLBACK
-
     bot.send_message(chat_id, reply)
 
 # -------------------------
 # BOT START
 # -------------------------
 if __name__ == "__main__":
-    print("🤖 Eduhub AI Teacher is running...")
+    print("🤖 Eduhub AI Teacher v2.0 is running...")
     bot.infinity_polling()
