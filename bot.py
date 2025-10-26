@@ -1,37 +1,34 @@
-import os
-import telebot
-from dotenv import load_dotenv
 from openai import OpenAI
+import telebot
+import os
+from dotenv import load_dotenv
 
-# .env ачаалж байна
 load_dotenv("bot.env")
 
-BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-bot = telebot.TeleBot(BOT_TOKEN)
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "Сайн уу, би EduHub-ийн ухаалаг туслах бот байна 🤖\nАсуух зүйлээ бичээрэй!")
-
 @bot.message_handler(func=lambda message: True)
-def ai_reply(message):
-    user_text = message.text
-
-    # OpenAI руу хүсэлт илгээж байна
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are a friendly AI tutor who helps students understand and learn."},
-            {"role": "user", "content": user_text}
-        ]
-    )
-
-    reply_text = response.choices[0].message.content.strip()
-    bot.reply_to(message, reply_text)
+def handle_message(message):
+    try:
+        user_input = message.text
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Та Монгол хэл дээр тод, ойлгомжтой, соёлтой хариулт өгөөрэй."},
+                {"role": "user", "content": user_input}
+            ],
+            temperature=0.8,
+            max_tokens=500
+        )
+        answer = response.choices[0].message.content.strip()
+        bot.reply_to(message, answer)
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Алдаа гарлаа: {e}")
 
 if __name__ == "__main__":
-    print("🤖 AI Telegram Bot is running...")
+    print("🤖 Bot is running...")
     bot.infinity_polling()
