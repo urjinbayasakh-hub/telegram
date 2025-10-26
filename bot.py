@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 import telebot
 
-# 🔹 .env биш, bot.env файл уншиж байна
+# 🟦 .env биш, bot.env файлыг уншиж байна
 load_dotenv("bot.env")
 
 BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
