@@ -14,7 +14,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Сайн уу, би Байсагийн ухаалаг туслах бот байна 🤖\nАсуух зүйлээ бичээрэй!")
+    bot.reply_to(message, "Сайн уу, би EduHub-ийн ухаалаг туслах бот байна 🤖\nАсуух зүйлээ бичээрэй!")
 
 @bot.message_handler(func=lambda message: True)
 def ai_reply(message):
