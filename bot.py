@@ -11,28 +11,6 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 openai.api_key = OPENAI_API_KEY
 
-@bot.message_handler(func=lambda message: True)
-def handle_message(message):
-    user_input = message.text.strip()
-    intent = detect_intent(user_input)
-
-    if intent == "greeting":
-        reply = RESPONSE_GREETING
-    elif intent == "learn_english":
-        reply = RESPONSE_LEARN_ENGLISH
-    elif intent == "speaking":
-        reply = RESPONSE_SPEAKING
-    elif intent == "vocab":
-        reply = RESPONSE_VOCAB
-    else:
-        reply = RESPONSE_FALLBACK
-
-    bot.send_message(message.chat.id, reply)
-
-if __name__ == "__main__":
-    print("🤖 Bot is running...")
-    bot.infinity_polling()
-
 # -------------------------
 # INTENT DETECTION FUNCTION
 # -------------------------
@@ -52,6 +30,10 @@ def detect_intent(txt):
         return "vocab"
 
     return "fallback"
+
+# -------------------------
+# RESPONSE MESSAGES
+# -------------------------
 RESPONSE_GREETING = (
     "Сайн байна уу! 👋\n"
     "Би англи хэл сурахад туслах туслах-ассистент байна.\n\n"
@@ -103,3 +85,30 @@ RESPONSE_FALLBACK = (
     "Зөвхөн дугаарыг бичээд явуулчих 💬"
 )
 
+# -------------------------
+# MAIN HANDLER
+# -------------------------
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    user_input = message.text.strip()
+    intent = detect_intent(user_input)
+
+    if intent == "greeting":
+        reply = RESPONSE_GREETING
+    elif intent == "learn_english":
+        reply = RESPONSE_LEARN_ENGLISH
+    elif intent == "speaking":
+        reply = RESPONSE_SPEAKING
+    elif intent == "vocab":
+        reply = RESPONSE_VOCAB
+    else:
+        reply = RESPONSE_FALLBACK
+
+    bot.send_message(message.chat.id, reply)
+
+# -------------------------
+# BOT START
+# -------------------------
+if __name__ == "__main__":
+    print("🤖 Bot is running...")
+    bot.infinity_polling()
