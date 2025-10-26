@@ -1,7 +1,10 @@
 import os
+from dotenv import load_dotenv
 import telebot
 
-# Environment variables
+# 🔹 .env биш, bot.env файл уншиж байна
+load_dotenv("bot.env")
+
 BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 bot = telebot.TeleBot(BOT_TOKEN)
