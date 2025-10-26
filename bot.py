@@ -3,6 +3,9 @@ import openai
 import telebot
 from dotenv import load_dotenv
 
+# -------------------------
+# ТОХИРГОО
+# -------------------------
 load_dotenv("bot.env")
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -32,7 +35,7 @@ def detect_intent(txt):
     return "fallback"
 
 # -------------------------
-# RESPONSE MESSAGES
+# RESPONSE TEXTS
 # -------------------------
 RESPONSE_GREETING = (
     "Сайн байна уу! 👋\n"
@@ -86,10 +89,14 @@ RESPONSE_FALLBACK = (
 )
 
 # -------------------------
-# MAIN HANDLER
+# MAIN MESSAGE HANDLER (энэ хэсэг л чиний асуусан код)
 # -------------------------
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
+    # 🛑 бот өөрийн илгээсэн мессежид дахин хариулахгүй
+    if message.from_user.is_bot:
+        return  
+
     user_input = message.text.strip()
     intent = detect_intent(user_input)
 
